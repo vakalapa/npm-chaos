@@ -28,6 +28,23 @@ for ns in ${namespaces[@]}; do
 done
 
 
+echo "#####################Deleting random pods#############################"
+for i in $(seq 1 50);do
+    echo "/////////////////Welcome $i times/////////////////"
+
+    for ns in ${namespaces[@]}; do
+        echo "Deleting random pods in namespace $ns"
+        #list all pods in the namespace into a file
+        kubectl get pods -n $ns | awk '{print $1}' > testkgp
+
+        #get 10 random pods and delete them
+        podname=$(shuf -n 10 testkgp | xargs)
+        kubectl delete pod -n $ns $podname
+    done
+    
+    sleep 5
+done
+
 #for i in ${namespaces[@]}; do
 #    k delete ns $i
 #done
