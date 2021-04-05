@@ -1,11 +1,31 @@
 #!/bin/bash
+########################################################################
+# USAGE:
+# 1st arg is deletens, then will delete all generated NS
+#
+#
+#
+#
+#
+#
+#######################################################################
+
+
 
 #alias k=kubectl
-namespaces=(web0 web01 web02 web03 web04 web05 web06 web07 web08 web09 web10)
+namespaces=(web0)
 labelsArray=(chaos=true)
 
+#Global Limits
+start=1
+numOfNs=200
+numofLabels=200
+numofLoopForLabels=50
+podFileName=pods_in_ns.txt
+policyFileName=netpols_in_ns.txt
+
 generateNs () {
-    for i in {1..100}
+    for (( i=$start; i<=$numOfNs; i++ ))
     do
         #sufix=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
         sufix=test
@@ -15,12 +35,47 @@ generateNs () {
 
 generateLabels () {
     labelsArray=(chaos=true)
-    for i in {1..100}
+    for (( i=$start; i<=$numofLabels; i++ ))
     do
         labelKey=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
         labelVal=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
         labelsArray=("${labelsArray[@]}" "chaos-$labelKey=$labelVal")
     done
+}
+
+labelAllPodsInNs () {    
+    generateLabels
+    kubectl label pods -n $1 --overwrite --all ${labelsArray[@]}
+}
+
+deleteRandomPodsNs () {
+    echo "Deleting random pods in namespace $1"
+    #list all pods in the namespace into a file
+    kubectl get pods -n $1 | grep -v "NAME" | awk '{print $1}' > pods_in_ns.txt
+
+    #get 10 random pods and delete them
+    podname=$(shuf -n 10 pods_in_ns.txt | xargs)
+    kubectl delete pod -n $1 $podname
+}
+
+deleteRandomPoliciesNs () {    
+    echo "Deleting random Network Policies in namespace $1"
+    #list all pods in the namespace into a file
+    kubectl get netpol -n $1 | grep -v "NAME" | awk '{print $1}' > netpols_in_ns.txt
+
+    #get 10 random netpols and delete them
+    polname=$(shuf -n 10 netpols_in_ns.txt | xargs)
+    kubectl delete netpol -n $1 $polname
+}
+
+cleanUpAllResources () {    
+    #delete old pod deployments
+    rm podDeployments/deployment*.yml
+    rm $podFileName
+    rm $policyFileName
+    echo "Deleting all created namespaces"
+    kubectl delete ns ${namespaces[@]}
+    exit 0
 }
 
 echo "Generating $numOfNs namespaces"
@@ -29,7 +84,14 @@ echo "Done Generating NS"
 
 echo ${namespaces[@]}
 
+if [ "$1" = "deletens" ]; then
+    cleanUpAllResources
+fi
+
+
 kubectl create ns test1replace
+#delete old pod deployments
+rm podDeployments/deployment*.yml
 for i in ${namespaces[@]}; do
     kubectl create ns $i
     sed "s/test1replace/$i/g" podDeployments/nginx_deployment.yaml > podDeployments/deployment-$i.yml
@@ -41,10 +103,9 @@ kubectl apply -f podDeployments/
 #Now apply labels to the deployment
 for ns in ${namespaces[@]}; do
     echo "Applying Labels to $ns"
-    for i in {1..30}
+    for (( i=$start; i<=$numofLoopForLabels; i++ ))
     do               
-        generateLabels
-        kubectl label pods -n $ns --all ${labelsArray[@]}
+        labelAllPodsInNs $ns
     done
 done
 
@@ -59,20 +120,19 @@ for i in $(seq 1 50);do
 
     for ns in ${namespaces[@]}; do
         echo "Deleting random pods in namespace $ns"
-        #list all pods in the namespace into a file
-        kubectl get pods -n $ns | awk '{print $1}' > pods_in_ns.txt
-
-        #get 10 random pods and delete them
-        podname=$(shuf -n 10 testkgp | xargs)
-        kubectl delete pod -n $ns $podname
+        #list and delete random pods in the namespace
+        deleteRandomPodsNs $ns
         sleep 3
-
-        generateLabels
-        kubectl label pods -n $ns --all ${labelsArray[@]}
-
+        #Re-add labels to new pods
+        labelAllPodsInNs $ns
+        sleep 2        
+        #list and delete random netpols in the namespace
+        deleteRandomPoliciesNs $ns
+        sleep 2
     done
     
     sleep 5
 done
 
-#k delete ns ${namespaces[@]}
+# Cleaning up all resources
+cleanUpAllResources
