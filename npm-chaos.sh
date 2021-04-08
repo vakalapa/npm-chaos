@@ -18,9 +18,9 @@ labelsArray=(chaos=true)
 
 #Global Limits
 start=1
-numOfNs=200
+numOfNs=150
 numofLabels=200
-numofLoopForLabels=50
+numofLoopForLabels=2
 podFileName=pods_in_ns.txt
 policyFileName=netpols_in_ns.txt
 
@@ -68,6 +68,16 @@ deleteRandomPoliciesNs () {
     kubectl delete netpol -n $1 $polname
 }
 
+deleteAllNetpols () {
+    for ns in ${namespaces[@]}; do
+        kubectl get netpol -n $ns | grep -v "NAME" | awk '{print $1}' > netpols_in_ns.txt
+
+        #get 10 random netpols and delete them
+        polname=$(cat netpols_in_ns.txt | xargs)
+        kubectl delete netpol -n $ns $polname
+    done
+}
+
 cleanUpAllResources () {    
     #delete old pod deployments
     rm podDeployments/deployment*.yml
@@ -83,6 +93,12 @@ generateNs
 echo "Done Generating NS"
 
 echo ${namespaces[@]}
+
+
+if [ "$1" = "deleteallpolicies" ]; then
+    deleteAllNetpols
+    exit 0
+fi
 
 if [ "$1" = "deletens" ]; then
     cleanUpAllResources
@@ -109,12 +125,18 @@ for ns in ${namespaces[@]}; do
     done
 done
 
+#######################
+if [ "$1" = "exitbeforenetpol" ]; then
+    exit 0
+fi
+#######################
+
 for ns in ${namespaces[@]}; do
     kubectl apply -n $ns -f networkPolicies/ 
 done
 
 
-echo "#####################Deleting random pods#############################"
+echo "#####################Deleting random pods and policies#############################"
 for i in $(seq 1 50);do
     echo "/////////////////Welcome $i times/////////////////"
 
