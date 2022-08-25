@@ -18,7 +18,7 @@ labelsArray=(chaos=true)
 
 #Global Limits
 start=1
-numOfNs=150
+numOfNs=50
 numofLabels=200
 numofLoopForLabels=2
 podFileName=pods_in_ns.txt
@@ -41,6 +41,15 @@ generateLabels () {
         labelVal=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
         labelsArray=("${labelsArray[@]}" "chaos-$labelKey=$labelVal")
     done
+}
+
+overwriteAllLabelsInNamespace () {
+    overwrittenLabels=""
+    for (( j=0; j<${#labelsArray[@]}; j++ ))
+    do
+        overwrittenLabels="$overwrittenLabels ${labelsArray[$j]}-extra"
+    done
+     kubectl label pods -n $1 --overwrite --all ${labelsArray[@]} $overwrittenLabels
 }
 
 labelAllPodsInNs () {    
@@ -135,6 +144,9 @@ for ns in ${namespaces[@]}; do
     kubectl apply -n $ns -f networkPolicies/ 
 done
 
+if [ "$1" = "exitbeforenetpol" ]; then
+    exit 0
+fi
 
 echo "#####################Deleting random pods and policies#############################"
 for i in $(seq 1 50);do
@@ -146,7 +158,8 @@ for i in $(seq 1 50);do
         deleteRandomPodsNs $ns
         sleep 3
         #Re-add labels to new pods
-        labelAllPodsInNs $ns
+        # labelAllPodsInNs $ns
+        overwriteAllLabelsInNamespace $ns
         sleep 2        
         #list and delete random netpols in the namespace
         deleteRandomPoliciesNs $ns
@@ -155,6 +168,9 @@ for i in $(seq 1 50);do
     
     sleep 5
 done
+
+echo "exiting before cleanup"
+exit 0
 
 # Cleaning up all resources
 cleanUpAllResources
